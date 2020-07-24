@@ -21,8 +21,8 @@ class Redactor(Singleton):
         except UnidentifiedImageError:
             return False, 'Unidentified image type'
 
-        im.resize((width, height))
-        im.save(dst_os_path)
+        resized_im = im.resize((width, height))
+        resized_im.save(dst_os_path)
 
         return True, dst_path
 

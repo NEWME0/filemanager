@@ -2,7 +2,11 @@ from fastapi import FastAPI, Depends
 from app.routers import apikey, browse, image
 
 
-app = FastAPI()
+app = FastAPI(
+    title='WebStorage',
+    version='0.0.1',
+    description='WebStorage description',
+)
 
 
 app.include_router(

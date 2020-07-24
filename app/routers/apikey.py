@@ -1,8 +1,8 @@
-from fastapi import APIRouter
-from fastapi import Security, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Security
 from fastapi.security.api_key import APIKeyQuery, APIKeyCookie, APIKeyHeader
 from starlette.status import HTTP_401_UNAUTHORIZED
+from starlette.exceptions import HTTPException
+from starlette.responses import JSONResponse
 
 from app.settings import API_KEY_NAME, API_KEY_VALUE
 
@@ -36,7 +36,7 @@ router = APIRouter()
 @router.get('/')
 async def set_cookie():
     """ Set apikey into cookies """
-    response = JSONResponse({'ok': True, 'detail': 'Cookie is set'})
+    response = JSONResponse('Cookie is set')
     response.set_cookie(key=API_KEY_NAME, value=API_KEY_VALUE)
     return response
 
@@ -44,6 +44,6 @@ async def set_cookie():
 @router.delete('/')
 async def delete_cookie():
     """ Delete apikey from cookies """
-    response = JSONResponse({'ok': True, 'detail': 'Cookie is deleted'})
+    response = JSONResponse('Cookie is deleted')
     response.delete_cookie(key=API_KEY_NAME)
     return response

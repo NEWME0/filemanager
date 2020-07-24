@@ -3,11 +3,14 @@ import requests
 import mimetypes
 from fs import open_fs
 from fs.errors import *
+from requests.exceptions import *
+from fastapi import UploadFile
 from app.settings import HOME_DIR
 from app.common.singleton import Singleton
+from app.common.models import EntryInfo
 
 
-ALLOWED_MEDIA_TYPES = [
+ALLOWED_CONTENT_TYPES = [
     'image/png',
     'image/jpeg',
 ]
@@ -16,147 +19,178 @@ ALLOWED_MEDIA_TYPES = [
 class Storage(Singleton):
     home = open_fs(HOME_DIR)
 
-    def browse_dir(self, path):
+    async def browse_dir(self, path):
+        """ Browse folder """
         try:
-            result = self.home.listdir(path)
+            result = self.home.scandir(path, namespaces=['details'])
+        except (
+            IllegalBackReference,
+            ResourceNotFound,
+            DirectoryExpected,
+        ) as exception:
+            return False, str(exception)
 
-        except ResourceNotFound:
-            return False, f'Resource not found'
+        result = [EntryInfo.from_storage(info).dict() for info in result]
 
-        except IllegalBackReference:
-            return False, f'Illegal back reference'
+        return True, result
 
-        except DirectoryExpected:
-            return False, f'Directory expected'
-
-        else:
-            return True, result
-
-    def create_dir(self, path):
+    async def create_dir(self, path):
+        """ Create directory """
         try:
             self.home.makedirs(path)
+        except (
+            IllegalBackReference,
+            DirectoryExists,
+            DirectoryExpected,
+        ) as exception:
+            return False, str(exception)
 
-        except DirectoryExists:
-            return False, 'Directory exists'
+        return True, path
 
-        except DirectoryExpected:
-            return False, 'Directory expected'
-
-        except IllegalBackReference:
-            return False, 'Illegal back reference'
-
-        else:
-            return True, path
-
-    def update_dir(self, src_path, dst_path, copy=False, merge=False):
+    async def update_dir(self, src_path, dst_path, copy=False, merge=False):
+        """ Move, copy or merge folders """
         try:
-            if merge is False:
-                if self.home.isdir(dst_path):
-                    raise DirectoryExists(dst_path)
-
-                if self.home.exists(dst_path):
-                    raise DirectoryExpected(dst_path)
+            if merge is False and self.home.exists(dst_path):
+                raise DestinationExists(dst_path)
 
             if copy:
                 self.home.copydir(src_path, dst_path, create=True)
             else:
                 self.home.movedir(src_path, dst_path, create=True)
+        except (
+            IllegalBackReference,
+            ResourceNotFound,
+            DirectoryExpected,
+            DestinationExists,
+        ) as exception:
+            return False, str(exception)
 
-        except ResourceNotFound:
-            return False, 'Resource not found'
+        return True, dst_path
 
-        except DirectoryExists:
-            return False, 'Directory exists'
-
-        except DirectoryExpected:
-            return False, 'Directory expected'
-
-        else:
-            return True, dst_path
-
-    def delete_dir(self, path):
+    async def delete_dir(self, path):
+        """ Delete folder """
         try:
             self.home.removedir(path)
+        except (
+            IllegalBackReference,
+            RemoveRootError,
+            ResourceNotFound,
+            DirectoryExpected,
+        ) as exception:
+            return False, str(exception)
 
-        except ResourceNotFound:
-            return False, 'Resource not found'
+        return True, os.path.dirname(path)
 
-        except DirectoryExpected:
+    async def browse_file(self, path):
+        """ Return file """
+        try:
+            if not self.home.isfile(path):
+                raise FileExpected(path)
+        except (
+            IllegalBackReference,
+            ResourceNotFound,
+            FileExpected,
+        ) as exception:
+            return False, str(exception)
+
+        path = self.home.getospath(path).decode('utf-8')
+        filename = os.path.basename(path)
+        media_type, encoding = mimetypes.guess_type(path, strict=True)
+
+        result = {
+            'path': path,
+            'filename': filename,
+            'media_type': media_type,
+        }
+
+        return True, result
+
+    async def create_file(self, src_file: UploadFile, src_link: str, dst_path: str):
+        if not self.home.isdir(dst_path):
             return False, 'Directory expected'
 
-        except RemoveRootError:
-            return False, 'Remove root are not allowed'
+        if src_file is not None:
+            if src_file.content_type not in ALLOWED_CONTENT_TYPES:
+                return False, 'Content type {src_file.content_type} not allowed'
 
-        return True, path
+            path = os.path.join(dst_path, src_file.filename)
 
-    def upload_file(self, path, file, data):
-        if self.home.isdir(path):
-            path = os.path.join(path, file.filename)
+            try:
+                self.home.create(path, wipe=False)
+            except (
+                IllegalBackReference,
+                ResourceNotFound,
+                DestinationExists,
+            ) as exception:
+                return False, str(exception)
 
+            self.home.writebytes(path, await src_file.read())
+
+            return True, path
+
+        if src_link is not None:
+            try:
+                response = requests.get(src_link, stream=True)
+            except (
+                HTTPError,
+                ConnectionError,
+                ConnectTimeout,
+            ) as exception:
+                return False, str(exception)
+
+            if response.headers.get('content-type') not in ALLOWED_CONTENT_TYPES:
+                return False, 'Content type {src_file.content_type} not allowed'
+
+            filename = os.path.basename(src_link)
+            path = os.path.join(dst_path, filename)
+
+            try:
+                if self.home.isfile(path):
+                    raise DestinationExists(path)
+
+                self.home.create(path, wipe=False)
+            except (
+                IllegalBackReference,
+                ResourceNotFound,
+                DestinationExists,
+            ) as exception:
+                return False, str(exception)
+
+            self.home.upload(path, response.raw)
+
+            return True, path
+
+        return False, 'Source not provided'
+
+    async def update_file(self, src_path, dst_path, copy=False, overwrite=False):
+        """ Move or copy file """
         try:
-            if self.home.exists(path):
-                raise DestinationExists(path)
+            if copy:
+                self.home.copy(src_path, dst_path, overwrite=overwrite)
+            else:
+                self.home.move(src_path, dst_path, overwrite=overwrite)
+        except (
+            IllegalBackReference,
+            ResourceNotFound,
+            FileExpected,
+            DestinationExists,
+        ) as exception:
+            return False, str(exception)
 
-            self.home.create(path)
-            self.home.writebytes(path, data)
+        return True, dst_path
 
-        except DestinationExists:
-            return False, 'Destination exists'
-
-        return True, path
-
-    def upload_url(self, path, url):
-        mime, encoding = mimetypes.guess_type(url, strict=True)
-
-        if mime not in ALLOWED_MEDIA_TYPES:
-            return False, f'Media type {mime} not allowed'
-
-        name = os.path.basename(url)
-
-        if self.home.isdir(path):
-            path = os.path.join(path, name)
-
-        if self.home.exists(path):
-            return False, "File exists"
-
+    async def delete_file(self, path):
+        """ Delete file """
         try:
-            response = requests.get(url, stream=True)
+            self.home.remove(path)
+        except (
+            IllegalBackReference,
+            ResourceNotFound,
+            FileExpected,
+        ) as exception:
+            return False, str(exception)
 
-        except requests.exceptions.HTTPError:
-            return False, 'HTTP bad url'
-
-        if response.status_code != 200:
-            return False, 'Not found'
-
-        try:
-            self.home.upload(path, file=response.raw)
-
-        except ResourceNotFound:
-            return False, 'Resource not found'
-
-        except DestinationExists:
-            return False, 'Destination exists'
-
-        return True, path
-
-    def download_file(self, path):
-        try:
-            info = self.home.getdetails(path)
-
-            if not info.is_file:
-                raise FileExpected(path)
-
-        except ResourceNotFound:
-            return False, 'Resource not found'
-
-        except FileExpected:
-            return False, 'File expected'
-
-        name = info.name
-        mime = 'application/octet-stream'
-        path = self.home.getospath(path)
-
-        return True, {'name': name, 'path': path, 'mime': mime}
+        return True, os.path.dirname(path)
 
 
 storage = Storage()
