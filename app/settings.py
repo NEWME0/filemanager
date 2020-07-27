@@ -15,3 +15,9 @@ HOME_DIR = os.path.join(ROOT_DIR, 'home')
 API_KEY_NAME = os.getenv('API_KEY_NAME')
 API_KEY_VALUE = os.getenv('API_KEY_VALUE')
 API_KEY_DOMAIN = os.getenv('API_KEY_DOMAIN')
+
+# Allowed content types for uploading
+ALLOWED_CONTENT_TYPES = [
+    'image/png',
+    'image/jpeg',
+]
