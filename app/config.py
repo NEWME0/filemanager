@@ -2,8 +2,10 @@ import os
 import dotenv
 
 
+DEBUG = True
+
 # Load environment variables
-dotenv.load_dotenv()
+dotenv.load_dotenv(verbose=DEBUG)
 
 # Application root directory
 ROOT_DIR = os.path.abspath(os.path.dirname(__name__))

@@ -1,16 +1,14 @@
-from contextlib import contextmanager
-
 import fs
-from fs.errors import FSError, FileExpected, DirectoryExpected, DestinationExists
 import requests
+from contextlib import contextmanager
+from fs.errors import FSError, FileExpected, DirectoryExpected, DestinationExists
 from requests.exceptions import RequestException, BaseHTTPError
-
 from fastapi.datastructures import UploadFile
 from starlette.responses import JSONResponse, FileResponse
 from starlette.exceptions import HTTPException
 from starlette.status import HTTP_400_BAD_REQUEST
 
-from app.settings import HOME_DIR, ALLOWED_CONTENT_TYPES
+from app.config import HOME_DIR, ALLOWED_CONTENT_TYPES
 from app.common.singleton import Singleton
 from app.common.models import EntryInfo
 

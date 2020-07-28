@@ -1,11 +1,12 @@
 from typing import Optional
-from fastapi import APIRouter, File, Query
+from fastapi import APIRouter
 from fastapi.datastructures import UploadFile
+from fastapi.param_functions import File, Query
 
-from app.common.storage import storage
+from app.services.storage import storage
 
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 
 
 @router.get('/')
@@ -39,14 +40,14 @@ async def delete_dir(
     return await storage.delete_dir(path)
 
 
-@router.get('/file')
+@router.get('/file/')
 async def browse_file(
     path: str = Query(..., max_length=255)
 ):
     return await storage.browse_file(path)
 
 
-@router.post('/file')
+@router.post('/file/')
 async def create_file(
     src_file: Optional[UploadFile] = File(None),
     src_link: Optional[str] = Query(None, max_length=255),
@@ -55,7 +56,7 @@ async def create_file(
     return await storage.create_file(src_file, src_link, dst_path)
 
 
-@router.patch('/file')
+@router.patch('/file/')
 async def update_file(
     src_path: str = Query(..., max_length=255),
     dst_path: str = Query(..., max_length=255),
@@ -65,7 +66,7 @@ async def update_file(
     return await storage.update_file(src_path, dst_path, copy, overwrite)
 
 
-@router.delete('/file')
+@router.delete('/file/')
 async def delete_file(
     path: str = Query(..., max_length=255)
 ):
